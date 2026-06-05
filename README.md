@@ -1,7 +1,7 @@
 <div align="center">
-  <h3 align="center">Voice Mode Plugin for OpenCode</h3>
+  <h3 align="center">OpenCode Voice Mode Plugin</h3>
   <p align="center">
-    A local, privacy-first voice dictation plugin for OpenCode powered by faster-whisper.
+    A local, privacy-first voice dictation plugin built specifically for OpenCode, powered by faster-whisper.
     <br />
     <a href="https://github.com/notdevank/voice-mode-plugin/issues">Report Bug</a>
     ·
