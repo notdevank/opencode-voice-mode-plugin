@@ -1,28 +1,78 @@
+#!/usr/bin/env python3
+"""Voice backend for OpenCode plugin - faster-whisper based transcription."""
 import sys
 import queue
 import threading
-import sounddevice as sd
-import numpy as np
-from faster_whisper import WhisperModel
-import json
+import os
+
+try:
+    import sounddevice as sd
+except ImportError:
+    print("ERROR: sounddevice not installed. Run: pip install sounddevice", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import numpy as np
+except ImportError:
+    print("ERROR: numpy not installed. Run: pip install numpy", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    print("ERROR: faster-whisper not installed. Run: pip install faster-whisper", file=sys.stderr)
+    sys.exit(1)
+
 
 def get_devices():
-    devices = sd.query_devices()
-    return [{"index": d["index"], "name": d["name"], "max_input_channels": d["max_input_channels"]} for d in devices if d["max_input_channels"] > 0]
+    """List all available audio input devices."""
+    try:
+        devices = sd.query_devices()
+        return [{"index": d["index"], "name": d["name"], "max_input_channels": d["max_input_channels"]} 
+                for d in devices if d["max_input_channels"] > 0]
+    except Exception as e:
+        print(f"ERROR listing devices: {e}", file=sys.stderr)
+        return []
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--list-devices":
-        print(json.dumps(get_devices()))
-        sys.exit(0)
 
-    device_index = int(sys.argv[1]) if len(sys.argv) > 1 else None
+def main():
+    # Parse arguments
+    device_index = None
+    model_size = "small"
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--list-devices":
+            print(json.dumps(get_devices()))
+            sys.exit(0)
+        elif sys.argv[1] == "--help":
+            print("Usage: voice_backend.py [device_index] [model_size]")
+            print("  --list-devices  List available microphones")
+            print("  device_index    Audio device index (optional)")
+            print("  model_size      Model size: tiny, small, medium, large (default: small)")
+            sys.exit(0)
+        else:
+            try:
+                device_index = int(sys.argv[1])
+            except ValueError:
+                print(f"ERROR: Invalid device index: {sys.argv[1]}", file=sys.stderr)
+                sys.exit(1)
+    
+    if len(sys.argv) > 2:
+        model_size = sys.argv[2].lower()
+        if model_size not in ("tiny", "small", "medium", "large"):
+            print(f"ERROR: Unknown model size: {model_size}", file=sys.stderr)
+            sys.exit(1)
 
-    # Load model once on startup
-    print("Loading model...", file=sys.stderr)
-    model = WhisperModel("small", device="cpu", compute_type="int8")
-    print("Model loaded.", file=sys.stderr)
+    # Load model
+    print(f"Loading {model_size} model...", file=sys.stderr)
+    try:
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        print("Model loaded.", file=sys.stderr)
+    except Exception as e:
+        print(f"ERROR loading model: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    # Signal ready to node
+    # Signal ready
     print("READY", flush=True)
 
     samplerate = 16000
@@ -34,16 +84,19 @@ if __name__ == "__main__":
     
     def callback(indata, frames, time, status):
         if status:
-            print(status, file=sys.stderr)
+            print(f"Audio callback status: {status}", file=sys.stderr)
         q.put(indata.copy())
 
     def record_loop():
-        with sd.InputStream(samplerate=samplerate, channels=channels, device=device_index, callback=callback):
-            while not stop_event.is_set():
-                try:
-                    audio_data.append(q.get(timeout=0.1))
-                except queue.Empty:
-                    pass
+        try:
+            with sd.InputStream(samplerate=samplerate, channels=channels, device=device_index, callback=callback):
+                while not stop_event.is_set():
+                    try:
+                        audio_data.append(q.get(timeout=0.1))
+                    except queue.Empty:
+                        pass
+        except Exception as e:
+            print(f"ERROR in record loop: {e}", file=sys.stderr)
 
     t = None
 
@@ -70,7 +123,7 @@ if __name__ == "__main__":
         elif cmd == "STOP":
             if t is not None and t.is_alive():
                 stop_event.set()
-                t.join()
+                t.join(timeout=5)
                 t = None
             
             print("Transcribing...", file=sys.stderr, flush=True)
@@ -80,11 +133,22 @@ if __name__ == "__main__":
                 continue
                 
             print(f"Audio chunks: {len(audio_data)}", file=sys.stderr, flush=True)
-            audio_np = np.concatenate(audio_data, axis=0).flatten().astype(np.float32)
+            try:
+                audio_np = np.concatenate(audio_data, axis=0).flatten().astype(np.float32)
+            except Exception as e:
+                print(f"ERROR concatenating audio: {e}", file=sys.stderr, flush=True)
+                print("RESULT:", flush=True)
+                continue
+                
             print(f"Audio length: {len(audio_np)} samples ({len(audio_np)/samplerate:.1f}s at {samplerate}Hz)", file=sys.stderr, flush=True)
             
             max_val = float(np.max(np.abs(audio_np)))
             print(f"Audio max absolute level: {max_val:.4f}", file=sys.stderr, flush=True)
+            
+            if max_val < 0.0001:
+                print("Audio level too low - possibly no microphone input", file=sys.stderr, flush=True)
+                print("RESULT:", flush=True)
+                continue
             
             if 0.0001 < max_val < 0.5:
                 print("Normalizing audio volume...", file=sys.stderr, flush=True)
@@ -111,3 +175,8 @@ if __name__ == "__main__":
             except Exception as e:
                 print("ERROR: " + str(e), file=sys.stderr, flush=True)
                 print("RESULT:", flush=True)
+
+
+if __name__ == "__main__":
+    import json
+    main()

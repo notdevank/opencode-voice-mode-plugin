@@ -1,74 +1,120 @@
-<div align="center">
-  <h3 align="center">OpenCode Voice Mode Plugin</h3>
-  <p align="center">
-    A local, privacy-first voice dictation plugin built specifically for OpenCode, powered by faster-whisper.
-    <br />
-    <a href="https://github.com/notdevank/voice-mode-plugin/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/notdevank/voice-mode-plugin/issues">Request Feature</a>
-  </p>
-</div>
+# OpenCode Voice Mode Plugin
 
-![Version](https://img.shields.io/github/package-json/v/notdevank/voice-mode-plugin?color=blue&style=flat-square)
-![License](https://img.shields.io/github/license/notdevank/voice-mode-plugin?color=green&style=flat-square)
-
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li><a href="#about-the-project">About The Project</a></li>
-    <li><a href="#features">Features</a></li>
-    <li><a href="#getting-started">Getting Started</a></li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-  </ol>
-</details>
-
-## About The Project
-
-The Voice Mode Plugin enables dictation within the OpenCode terminal UI. Instead of typing out long prompts or commands, simply use your voice! This plugin offloads speech-to-text processing to a local Python backend running `faster-whisper`, keeping your voice data private and secure on your own machine. It integrates directly with the `@opencode-ai/plugin` API.
+A local, privacy-first voice dictation plugin for [OpenCode](https://github.com/opencode-ai/opencode), powered by `faster-whisper`.
 
 ## Features
-* **Local Processing:** Utilizes `faster-whisper` for fast, accurate, and completely local transcription.
-* **Microphone Selection:** Built-in UI dialog to choose your preferred input device.
-* **Seamless TUI Integration:** Appends transcribed text directly to the OpenCode prompt.
-* **Keyboard Shortcuts:** Start and stop recording with a quick press of `F4`.
 
-## Getting Started
+- **Local Processing** — All transcription runs locally using `faster-whisper`. No data leaves your machine.
+- **Microphone Selection** — Built-in UI to choose your preferred input device.
+- **Model Size Options** — Choose between `tiny`, `small`, `medium`, or `large` Whisper models.
+- **Seamless TUI Integration** — Appends transcribed text directly to the OpenCode prompt.
+- **Keyboard Shortcuts** — Start/stop recording with `F4`, select microphone with `F6`, configure with `F7`.
 
-### Prerequisites
+## Prerequisites
 
-You need Python installed and the required Python packages for the backend:
+1. **Python 3.8+** with the following packages:
 
 ```bash
 pip install sounddevice numpy faster-whisper
 ```
 
-*Note: You may also need `ffmpeg` installed on your system for audio processing.*
+2. **ffmpeg** — Required for audio processing:
 
-### Installation
+```bash
+# Ubuntu/Debian
+sudo apt install ffmpeg
 
-Clone this repository into your OpenCode plugins directory:
+# macOS
+brew install ffmpeg
+
+# Windows (with scoop)
+scoop install ffmpeg
+```
+
+## Installation
+
+### Option 1: Clone directly into OpenCode plugins directory
 
 ```bash
 cd ~/.opencode/plugins/
 git clone https://github.com/notdevank/voice-mode-plugin.git
 ```
 
-Make sure the Python executable paths in `voice.tsx` (currently configured for `.venv/bin/python`) match your local environment.
+### Option 2: For development
+
+```bash
+git clone https://github.com/notdevank/voice-mode-plugin.git
+cd voice-mode-plugin
+npm install
+```
+
+## Configuration
+
+After installation, configure the plugin via the in-app settings (`F7`):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Python executable | `python3` | Path to your Python interpreter |
+| Model size | `small` | Whisper model: `tiny`, `small`, `medium`, `large` |
+| Microphone | System default | Selected input device |
+
+### Model Size Guide
+
+| Model | Size | Speed | Accuracy |
+|-------|------|-------|----------|
+| `tiny` | ~75 MB | Fastest | Baseline |
+| `small` | ~244 MB | Fast | Good |
+| `medium` | ~769 MB | Medium | Better |
+| `large` | ~1550 MB | Slow | Best |
 
 ## Usage
 
-Once loaded into OpenCode, you can access the voice controls via the command menu:
+| Shortcut | Action |
+|----------|--------|
+| `F4` | Toggle voice recording (start/stop) |
+| `F5` | Select speech provider |
+| `F6` | Select microphone |
+| `F7` | Configure voice settings |
 
-- **Voice input** (`F4`): Toggles recording. Start speaking, then press `F4` again to transcribe and append to your prompt.
-- **Select microphone** (`F6`): Opens a dialog to select the active microphone.
-- **Select speech provider** (`F5`): Opens a dialog to select the provider (currently local faster-whisper).
+### Workflow
+
+1. Press `F4` to start recording
+2. Speak your command or text
+3. Press `F4` again to stop and transcribe
+4. Your transcribed text is appended to the prompt
+
+## Troubleshooting
+
+### "Failed to fetch microphones"
+- Ensure `sounddevice` is installed: `pip install sounddevice`
+- Check that your microphone is connected and working
+
+### "Model loading failed"
+- Ensure `faster-whisper` is installed: `pip install faster-whisper`
+- Try downloading the model manually or use a smaller model size
+
+### "No speech detected"
+- Check your microphone is selected correctly (`F6`)
+- Ensure audio input volume is not too low
+- Try speaking closer to the microphone
+
+### Backend won't start
+- Verify Python path in settings (`F7`)
+- Run manually to see errors:
+```bash
+python3 voice_backend.py
+```
+
+## Architecture
+
+```
+voice.tsx          → OpenCode plugin frontend (TypeScript/Bun)
+voice_backend.py   → Python backend (faster-whisper + sounddevice)
+```
+
+The plugin spawns the Python backend as a subprocess and communicates via stdin/stdout.
 
 ## Contributing
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
@@ -77,4 +123,5 @@ If you have a suggestion that would make this better, please fork the repo and c
 5. Open a Pull Request
 
 ## License
+
 Distributed under the MIT License. See `LICENSE` for more information.

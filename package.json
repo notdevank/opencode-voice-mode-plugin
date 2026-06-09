@@ -1,0 +1,27 @@
+{
+  "name": "opencode-voice-mode-plugin",
+  "version": "1.0.0",
+  "description": "Local, privacy-first voice dictation plugin for OpenCode, powered by faster-whisper",
+  "main": "voice.tsx",
+  "scripts": {
+    "build": "bun build voice.tsx --outdir=dist --target=browser --format=esm",
+    "dev": "bun build voice.tsx --outdir=dist --target=browser --format=esm --watch",
+    "test": "python3 test_transcribe.py"
+  },
+  "keywords": [
+    "opencode",
+    "voice",
+    "dictation",
+    "speech-to-text",
+    "faster-whisper",
+    "plugin"
+  ],
+  "author": "notdevank",
+  "license": "MIT",
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

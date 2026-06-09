@@ -1,9 +1,19 @@
 import type { TuiPluginApi } from "@opencode-ai/plugin/dist/tui.js";
+import { resolve } from "path";
+import { dirname } from "path";
 
 let isRecording = false;
 let recorderProcess: any = null;
 let currentTranscriptResolver: ((val: string) => void) | null = null;
 let currentStartResolver: (() => void) | null = null;
+
+// Plugin directory - use import.meta.url for Bun, fallback to __dirname
+const pluginDir = dirname(fileURLToPath(import.meta.url));
+
+// Configurable paths via KV store with sensible defaults
+const getPythonPath = () => api.kv.get("python_path", "python3") as string;
+const getModelSize = () => api.kv.get("model_size", "small") as string;
+const getBackendPath = () => resolve(pluginDir, "voice_backend.py");
 
 export default {
   id: "voice-input",
@@ -17,10 +27,11 @@ export default {
       if (recorderProcess) return;
 
       const deviceIndex = api.kv.get("voice_device_index", null);
-      const args = ["/home/devank/Vault/AriaOS/.opencode/plugins/voice_backend.py"];
+      const pythonPath = getPythonPath();
+      const args = [getBackendPath()];
       if (deviceIndex !== null) args.push(deviceIndex.toString());
 
-      recorderProcess = Bun.spawn(["/home/devank/Vault/AriaOS/.opencode/plugins/.venv/bin/python", ...args], {
+      recorderProcess = Bun.spawn([pythonPath, ...args], {
         stdin: "pipe",
         stdout: "pipe",
         stderr: "pipe"
@@ -52,10 +63,14 @@ export default {
                   currentTranscriptResolver(result);
                   currentTranscriptResolver = null;
                 }
+              } else if (isStdout && text.startsWith("ERROR:")) {
+                console.error("Backend error:", text.slice(6));
               }
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error("Stream error:", e);
+        }
       };
 
       consumeStream(recorderProcess.stdout, true);
@@ -144,14 +159,32 @@ export default {
             title: "Loading...",
             message: "Fetching available microphones..."
           }));
-          const proc = Bun.spawn(["/home/devank/Vault/AriaOS/.opencode/plugins/.venv/bin/python", "/home/devank/Vault/AriaOS/.opencode/plugins/voice_backend.py", "--list-devices"], { stdout: "pipe" });
+          const pythonPath = getPythonPath();
+          const proc = Bun.spawn([pythonPath, getBackendPath(), "--list-devices"], { stdout: "pipe" });
           const text = await new Response(proc.stdout).text();
-          const devices = JSON.parse(text);
+          let devices;
+          try {
+            devices = JSON.parse(text);
+          } catch {
+            api.ui.dialog.replace(() => api.ui.DialogAlert({
+              title: "Error",
+              message: "Failed to fetch microphones. Is sounddevice installed?"
+            }));
+            return;
+          }
 
           const options = devices.map((d: any) => ({
             title: d.name,
             value: d.index
           }));
+
+          if (options.length === 0) {
+            api.ui.dialog.replace(() => api.ui.DialogAlert({
+              title: "No microphones found",
+              message: "Please connect a microphone and try again."
+            }));
+            return;
+          }
 
           api.ui.dialog.replace(() => api.ui.DialogSelect({
             title: "Select microphone",
@@ -168,7 +201,46 @@ export default {
             }
           }));
         }
+      },
+      {
+        title: "Configure voice settings",
+        value: "voice-config",
+        category: "Input",
+        keybind: "f7",
+        onSelect: () => {
+          const currentModel = getModelSize();
+          const currentPython = getPythonPath();
+          
+          api.ui.dialog.replace(() => api.ui.DialogPrompt({
+            title: "Voice Settings",
+            message: `Current model: ${currentModel}\nPython path: ${currentPython}\n\nEnter new values (leave blank to keep current):`,
+            fields: [
+              { name: "model_size", label: "Model size (tiny/small/medium/large)", defaultValue: currentModel },
+              { name: "python_path", label: "Python executable path", defaultValue: currentPython }
+            ],
+            onSubmit: (values) => {
+              if (values.model_size) api.kv.set("model_size", values.model_size);
+              if (values.python_path) api.kv.set("python_path", values.python_path);
+              // Restart backend to apply new settings
+              if (recorderProcess) {
+                recorderProcess.kill();
+                recorderProcess = null;
+              }
+              ensureBackend();
+              api.ui.dialog.clear();
+              api.ui.toast({ message: "Voice settings updated. Restarting backend...", variant: "success" });
+            }
+          }));
+        }
       }
     ]);
   }
 };
+
+// Helper for ESM __dirname equivalent
+function fileURLToPath(url: string): string {
+  if (typeof import.meta !== "undefined" && import.meta.url) {
+    return new URL(url).pathname;
+  }
+  return url;
+}
